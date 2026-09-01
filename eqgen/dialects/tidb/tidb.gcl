@@ -1,0 +1,98 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# TiDB equivalence configuration. GCL lists replace rather than merge.
+#
+# Portable builders aligned with MySQL where TiDB 8.5 can spell them.
+# Still off: TEMP VIEW/TABLE, MATERIALIZED VIEW, CTE materialization hints, codecs,
+# SEMI JOIN, EXCEPT ALL / INTERSECT ALL (TiDB error 1105). SequenceOuterJoin stays
+# light (PPD nil-plan). TiDbCachedTableBuilder is the only TiDB-native extra.
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 4; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 5; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'CteQueryBuilder'; weight = 10; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 5; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 4; },
+        Weighted { v = 'QualifyQueryBuilder'; weight = 5; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 5; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 12; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 12; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 10; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 10; },
+        # TiDB 8/9: "do not support except all" / "do not support intersect all".
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 5; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 5; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 6; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 6; },
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 12; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 10; },
+        # LOJ views × 3-way cross flood known PPD nil-plan (tidb-run18); keep light.
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 2; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 2; },
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 5; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 5; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 5; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 5; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 5; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 5; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+
+        Weighted { v = 'TiDbCachedTableBuilder'; weight = 12; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 4; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 4; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+        Weighted { v = 'TiDbCachedTableBuilder'; weight = 12; },
+    ];
+};

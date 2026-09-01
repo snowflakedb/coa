@@ -1,0 +1,213 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Configuration for the equivalence generator.
+#
+# The source of truth for the generator's tunable knobs. Resolved into the runtime
+# EquivalenceConfig via EquivalenceConfig.from_gcl, and typed by
+# eqgen.config.settings.EquivalenceGeneratorV3Settings.
+#
+# A dialect declares its own configuration by inheriting this tuple and overriding what
+# differs -- see dialects/duckdb/duckdb.gcl:
+#
+#   equivalence_generator_v3 = eqg3 { builder_weights = [ ... ]; };
+#
+# Note that GCL lists *replace* rather than merge, so an override restates the whole list.
+# With a builder set this size that is a feature: an allow-list reads better as an explicit
+# enumeration than as a set difference.
+
+Weighted: private = include 'weighted.gcl';
+BuilderSettings: private = include 'builder_settings.gcl';
+
+# Framework limits shared with the builder framework. A relation spans create -> query
+# (-> nested relation) levels, so max_depth counts more levels than "one per transform"
+# would suggest. The node budgets are a work ceiling, not a tree-size cap; 0 = unlimited.
+builder_settings = BuilderSettings { max_depth = 15; max_nodes = 0; max_attempts = 0; };
+
+################################################################################
+# Builder selection weights (value = builder class name, weight = int).
+#
+# Two peer layers the factory chooses within: create builders decide *which*
+# materialization, query builders decide *which defining query*. Weight 0 disables a
+# builder entirely, which is how a dialect restricts itself.
+#
+# These are the portable builders. A dialect adds its own native ones in its own file;
+# nothing here knows about them.
+################################################################################
+builder_weights: [Weighted] = [
+    # --- Create builders: which kind of object materializes the equivalence -------
+    # Views and tables carry the core of the experiment between them: a view folds into
+    # the referencing query, a table does not, so the same workload compiles differently
+    # on each side. Weighted highest for that reason.
+    Weighted { v = 'CreateViewBuilder'; weight = 10; },
+    Weighted { v = 'CreateTableBuilder'; weight = 10; },
+    # The same two, dropped when the session ends. A temporary object lives in a different
+    # schema, so name resolution has to prefer it -- a different path to the same rows.
+    Weighted { v = 'CreateTemporaryViewBuilder'; weight = 4; },
+    Weighted { v = 'CreateTemporaryTableBuilder'; weight = 4; },
+    # Snapshot heap filled once. Same rows as a view; a different storage path. Weight 0 in the
+    # portable default because DuckDB has no materialized views — PostgreSQL raises it in its
+    # own .gcl. Listed here so the drift guards stay honest.
+    Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+    # In-object DML: created, mutated, restored. Same rows, different physical history.
+    Weighted { v = 'DeleteReinsertTableBuilder'; weight = 4; },
+    Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+
+    # --- Query builders: which defining query the object wraps ---------------------
+    # The trivial body -- and the builder that materializes an inbound row filter, which
+    # is what makes the partitioning rewrites work at all.
+    Weighted { v = 'SelectStarQueryBuilder'; weight = 10; },
+    # The same rows with the columns written out. SELECT * and a column list are not the
+    # same path through name resolution.
+    Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 6; },
+    # Partition and recombine on integer parity. Exhaustive and disjoint including
+    # negative and NULL keys; needs no predicate plugin, so it works standalone.
+    # The same read, through a CTE: the engine chooses whether to fold it in.
+    Weighted { v = 'CteQueryBuilder'; weight = 6; },
+    # Forced AS MATERIALIZED CTE (Postgres / DuckDB). Weight 0 elsewhere.
+    Weighted { v = 'MaterializedCteQueryBuilder'; weight = 0; },
+    # Forced AS NOT MATERIALIZED CTE. Weight 0 in the portable default; SQLite raises it.
+    Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 0; },
+    # Every row through a one-row LATERAL subquery and back.
+    Weighted { v = 'LateralReprojectQueryBuilder'; weight = 6; },
+    # A column added in an intermediate view, then projected away again.
+    Weighted { v = 'AddDropColumnQueryBuilder'; weight = 4; },
+    # Identity QUALIFY / ordered scan (coverage).
+    Weighted { v = 'QualifyQueryBuilder'; weight = 5; },
+    Weighted { v = 'OrderedScanQueryBuilder'; weight = 3; },
+    Weighted { v = 'PartitionUnionQueryBuilder'; weight = 6; },
+    # Ternary Logic Partitioning over a generated predicate: {p, NOT p, p IS NULL}.
+    # Declines when no predicate source is configured.
+    Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 6; },
+    Weighted { v = 'RankModUnionQueryBuilder'; weight = 5; },
+    Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 5; },
+    Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 0; },
+    Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 0; },
+    Weighted { v = 'HexCodecRoundTripBuilder'; weight = 0; },
+    Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 0; },
+    Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 0; },
+    Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 0; },
+    Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 5; },
+    Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+    Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 5; },
+    # The EET keystone: wrap every column in a redundant CASE whose condition is
+    # tautologically true. Universal -- no per-type guard -- so it always fires.
+    Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 6; },
+    # The same always-true condition, in the WHERE instead of around each column.
+    Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 6; },
+
+    # Each column through a window function over a partition of that same column, which
+    # returns the value it started with.
+    Weighted { v = 'WindowRewriteQueryBuilder'; weight = 6; },
+
+    # Rows written out with a key, then joined back one-to-one: nothing dropped, nothing
+    # duplicated, whatever the join keyword.
+    Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 5; },
+    # Columns split in half, then rejoined on the key.
+    Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 5; },
+    # LEFT OUTER JOIN empty ON TRUE — portable anti-semantics.
+    Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 5; },
+    # SEMI JOIN complete flag table. Weight 0 here: PostgreSQL has no SEMI keyword; DuckDB raises it.
+    Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+
+    # Expansion / reduction. Reducers mint a channel and collapse copies; expanders require
+    # the channel and only fire underneath. Weighted low: bigger setup tables for every later query.
+    Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 3; },
+    Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 2; },
+    Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+    Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+    Weighted { v = 'TagExplodeExpansionBuilder'; weight = 3; },
+    Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 2; },
+
+    # The only builder that reproduces a projection it was handed, and therefore the only reason
+    # anything can ask for a relation of a particular shape (a key column added, say) rather than
+    # building it. Fires only when asked, so the weight is nominal.
+    Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+
+    # --- Source leaf ---------------------------------------------------------------
+    # Where recursion bottoms out. Nothing else can terminate a chain.
+    Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+];
+
+# Weights applied only to the root object -- the one the workload queries, under the base
+# table's own name. Empty means "use builder_weights at the root too".
+#
+# Restricted to the materializations, because the root must be a named object rather than
+# a bare query. Chained relations deeper in the tree still draw from the full set.
+root_builder_weights: [Weighted] = [
+    Weighted { v = 'CreateViewBuilder'; weight = 10; },
+    Weighted { v = 'CreateTableBuilder'; weight = 10; },
+    Weighted { v = 'CreateTemporaryViewBuilder'; weight = 4; },
+    Weighted { v = 'CreateTemporaryTableBuilder'; weight = 4; },
+    Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+    Weighted { v = 'DeleteReinsertTableBuilder'; weight = 4; },
+    Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+    Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+    Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 3; },
+    Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+    Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+];
+
+# How a builder picks a key column among the eligible ones. FIRST is deterministic; RANDOM
+# trades that for cross-seed coverage. Pinned to FIRST so one seed rebuilds one
+# equivalence -- give RANDOM a weight to trade that for variety.
+key_selection_weights: [Weighted] = [
+    Weighted { v = 'FIRST'; weight = 1; },
+    Weighted { v = 'RANDOM'; weight = 0; },
+];
+
+# Which window function the window rewrite writes. Over a partition where every row shares the
+# value, all four return that value, so this is coverage rather than correctness. Spread evenly:
+# MIN/MAX are aggregates and FIRST_VALUE/LAST_VALUE are not, which are different code paths.
+window_function_weights: [Weighted] = [
+    Weighted { v = 'MIN'; weight = 1; },
+    Weighted { v = 'MAX'; weight = 1; },
+    Weighted { v = 'FIRST_VALUE'; weight = 1; },
+    Weighted { v = 'LAST_VALUE'; weight = 1; },
+];
+
+# Whether that rewrite writes an explicit frame. Both named frames cover the whole partition, so
+# the answer is the same either way -- and only the whole partition is safe: a narrower frame would
+# make FIRST_VALUE depend on where in the partition the row sits.
+window_frame_weights: [Weighted] = [
+    Weighted { v = 'NONE'; weight = 2; },
+    Weighted { v = 'ROWS'; weight = 1; },
+    Weighted { v = 'RANGE'; weight = 1; },
+];
+
+# Which join keyword the flag-table join writes. The join is one-to-one and complete, so every one
+# of these returns the base rows -- four operators exercised by one rewrite. INNER is weighted
+# highest only because it is the one an optimizer treats least specially.
+# Named after the enum members, not the SQL: the keyword each one writes lives on
+# JoinTypeChoice, so 'LEFT_OUTER' here becomes LEFT OUTER in the statement.
+join_type_weights: [Weighted] = [
+    Weighted { v = 'INNER'; weight = 2; },
+    Weighted { v = 'LEFT_OUTER'; weight = 1; },
+    Weighted { v = 'RIGHT_OUTER'; weight = 1; },
+    Weighted { v = 'FULL_OUTER'; weight = 1; },
+];
+
+# How many copies the expand/reduce builders write per base row before pruning back to one.
+# Row-neutral at any value -- two is enough to prove the collapse works and keeps the setup
+# small, since the cost of a bigger table is paid on every later query run against the round.
+big_table_rowcount_weights: [Weighted] = [
+    Weighted { v = 2; weight = 1; },
+];

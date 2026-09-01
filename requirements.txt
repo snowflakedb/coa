@@ -1,0 +1,52 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Python dependencies. Python 3.11.
+#
+# gcl is a third-party config language (MIT, https://github.com/rix0rrr/gcl), pinned to the version
+# this project's .gcl files were written against. It used to be satisfied by a vendored checkout on
+# sys.path; the pin is what replaces that.
+gcl==0.6.10
+
+# One engine per dialect. Pinned because an evaluation has to name the engine it measured, and
+# because a wheel bump silently changes what every test runs against.
+duckdb==1.5.0
+psycopg[binary]>=3.1
+pymysql>=1.1
+
+# MySQL dialect (--dialect mysql) also needs Docker: it runs a pinned mysql:9.7.x container.
+# Override the image with EQGEN_MYSQL_IMAGE.
+
+# Coverage reporting (evaluation/coverage/*). One of the two reporters is gcovr, invoked as a
+# subprocess rather than imported -- which is why it went undeclared here while still being required:
+# every entry point under evaluation/coverage fails without it, and nothing surfaces that at import
+# time. Not pinned exactly because the parsers tolerate its output format across versions; pinned at
+# all because a reported coverage figure has to name the tool that produced it.
+gcovr>=8.0
+
+# The other reporter is lcov (with genhtml/geninfo), plus cmake/make for the instrumented-engine
+# builds in evaluation/coverage/build_*.sh. Those are host tools, not Python packages: install them
+# from your distribution. `pip install -r requirements.txt` alone is not enough to run eval 1 or 2.
+
+# Tooling. The test suite runs things against a live engine rather than asserting about them, so
+# pytest is not optional to trust a change.
+#
+# ruff is pinned exactly, and that is not fussiness: a lint configuration only means something
+# alongside the linter version it was written for. 0.16 turns on rule families 0.14 left off (the
+# pyupgrade set alone flags ~270 places in this tree), so an unpinned ruff makes "clean" a moving
+# target and a routine `pip install -U` into a 79-file diff.
+pytest>=8.0
+mypy>=1.8
+ruff==0.14.4

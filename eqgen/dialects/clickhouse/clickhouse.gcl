@@ -1,0 +1,135 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ClickHouse equivalence configuration. GCL lists replace rather than merge.
+#
+# Expanded from the initial conservative set: portable query/join/set builders that
+# probe OK on 26.8, plus Ch* physical Mats. Still off:
+#   MATERIALIZED VIEW — insert trigger leaves an empty result (false NONEQUIVALENT)
+#   TEMP TABLE/VIEW  — HTTP sessions don't share temp tables across requests
+#   LATERAL          — not supported
+# NoopUpdate emits ALTER TABLE … UPDATE (see ClickHouseEmitter.visit_update).
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+BuilderSettings: private = include '../../config/gcl/builder_settings.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    # Cap tree size: unbounded depth+nodes blows past ClickHouse's 500k query-tree
+    # limit (Code 36) and has produced SIGABRT OOMs on huge equivalence DDL.
+    builder_settings = BuilderSettings { max_depth = 5; max_nodes = 18; max_attempts = 0; };
+
+    # Prefer unframed window rewrites (framed RANK is a known CH wrong-result class).
+    window_frame_weights: [Weighted] = [
+        Weighted { v = 'NONE'; weight = 4; },
+        Weighted { v = 'ROWS'; weight = 0; },
+        Weighted { v = 'RANGE'; weight = 0; },
+    ];
+
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 5; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 6; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 8; },
+        Weighted { v = 'CteQueryBuilder'; weight = 6; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 5; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 0; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 4; },
+        Weighted { v = 'QualifyQueryBuilder'; weight = 8; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 4; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 8; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 8; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 4; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 7; },
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 7; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 6; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 7; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 8; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 8; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 8; },
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 12; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 10; },
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 8; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 8; },
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 3; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 3; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 3; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+
+        # ClickHouse physical Mats — biased up so every round hits layout/codec diversity.
+        Weighted { v = 'ClickHouseProjectionBuilder'; weight = 12; },
+        Weighted { v = 'ClickHouseMinMaxIndexBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseSetIndexBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseBloomIndexBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseTokenBfIndexBuilder'; weight = 7; },
+        Weighted { v = 'ClickHouseNgramBfIndexBuilder'; weight = 7; },
+        Weighted { v = 'ClickHouseSortedTableBuilder'; weight = 28; },
+        Weighted { v = 'ClickHousePartitionedTableBuilder'; weight = 9; },
+        Weighted { v = 'ClickHouseFineGranuleTableBuilder'; weight = 7; },
+        Weighted { v = 'ClickHouseZstdCodecBuilder'; weight = 6; },
+        Weighted { v = 'ClickHouseDeltaCodecBuilder'; weight = 6; },
+        Weighted { v = 'ClickHouseTupleElementRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseArrayElementRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseMapElementRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseCoalesceSelfRoundTripBuilder'; weight = 7; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 5; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+        Weighted { v = 'ClickHouseProjectionBuilder'; weight = 12; },
+        Weighted { v = 'ClickHouseMinMaxIndexBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseSetIndexBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseBloomIndexBuilder'; weight = 8; },
+        Weighted { v = 'ClickHouseTokenBfIndexBuilder'; weight = 7; },
+        Weighted { v = 'ClickHouseNgramBfIndexBuilder'; weight = 7; },
+        Weighted { v = 'ClickHouseSortedTableBuilder'; weight = 28; },
+        Weighted { v = 'ClickHousePartitionedTableBuilder'; weight = 9; },
+        Weighted { v = 'ClickHouseFineGranuleTableBuilder'; weight = 7; },
+        Weighted { v = 'ClickHouseZstdCodecBuilder'; weight = 6; },
+        Weighted { v = 'ClickHouseDeltaCodecBuilder'; weight = 5; },
+    ];
+};

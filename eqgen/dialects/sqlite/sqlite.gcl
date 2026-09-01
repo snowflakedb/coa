@@ -1,0 +1,122 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# SQLite equivalence configuration — pinned amalgamation 3.53.4 + native Mat builders.
+#
+# GCL lists replace rather than merge.
+# Hunt-biased: recursive CTE / JSON+hex codecs / expr+WOR indexes / RIGHT-FULL surface.
+# EXCEPT ALL / INTERSECT ALL / SEMI JOIN stay 0 — SQLite has none of those.
+# TEMP stays 0 — ``no such table: main.t__base_*`` aborts hunts.
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 3; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 3; },
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 0; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 5; },
+        Weighted { v = 'CteQueryBuilder'; weight = 5; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 14; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 12; },
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 0; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 0; },
+        Weighted { v = 'QualifyQueryBuilder'; weight = 3; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 3; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 5; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 5; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 4; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 4; },
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 6; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 6; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 4; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 4; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 3; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 3; },
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 5; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 6; },
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 6; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 5; },
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 2; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 2; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 2; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 2; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 2; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 2; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 5; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+        # SQLite-native Mats / Rewrites — hunt-biased.
+        Weighted { v = 'SqliteCreateIndexBuilder'; weight = 6; },
+        Weighted { v = 'SqliteUniqueIndexMatBuilder'; weight = 5; },
+        Weighted { v = 'SqlitePartialIndexBuilder'; weight = 5; },
+        Weighted { v = 'SqliteTruthyPartialIndexBuilder'; weight = 12; },
+        Weighted { v = 'SqliteConstantPartialIndexBuilder'; weight = 10; },
+        Weighted { v = 'SqliteAttachRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'SqliteWithoutRowidTableBuilder'; weight = 5; },
+        Weighted { v = 'SqliteGeneratedColumnRoundTripBuilder'; weight = 4; },
+        Weighted { v = 'SqliteStoredGeneratedColumnRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'SqliteStrictTableBuilder'; weight = 4; },
+        Weighted { v = 'SqliteExpressionIndexMatBuilder'; weight = 8; },
+        Weighted { v = 'SqliteWithoutRowidIndexedBuilder'; weight = 8; },
+        Weighted { v = 'SqliteRecursiveCteIdentityBuilder'; weight = 10; },
+        Weighted { v = 'SqliteNestedMaterializedCteBuilder'; weight = 14; },
+        Weighted { v = 'SqliteAnalyzeIndexMatBuilder'; weight = 12; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 3; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 3; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 2; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 2; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 2; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 2; },
+        Weighted { v = 'SqliteCreateIndexBuilder'; weight = 6; },
+        Weighted { v = 'SqliteUniqueIndexMatBuilder'; weight = 5; },
+        Weighted { v = 'SqlitePartialIndexBuilder'; weight = 5; },
+        Weighted { v = 'SqliteTruthyPartialIndexBuilder'; weight = 12; },
+        Weighted { v = 'SqliteConstantPartialIndexBuilder'; weight = 10; },
+        Weighted { v = 'SqliteAttachRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'SqliteWithoutRowidTableBuilder'; weight = 5; },
+        Weighted { v = 'SqliteGeneratedColumnRoundTripBuilder'; weight = 4; },
+        Weighted { v = 'SqliteStoredGeneratedColumnRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'SqliteStrictTableBuilder'; weight = 4; },
+        Weighted { v = 'SqliteExpressionIndexMatBuilder'; weight = 8; },
+        Weighted { v = 'SqliteWithoutRowidIndexedBuilder'; weight = 8; },
+        Weighted { v = 'SqliteAnalyzeIndexMatBuilder'; weight = 12; },
+    ];
+};

@@ -1,0 +1,52 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[tool.ruff]
+line-length = 132
+target-version = 'py311'
+
+[tool.ruff.lint]
+extend-select = ["I", "SIM", "RUF", "E", "F", "W", "C", "PLC", "PLE", "C90"]
+
+# C901 = is too complex
+# E501 = line too long
+# E741 = Ambiguous variable name
+# PLC0415 = import not at top of file. Every one here is deliberate: `load_adapter` imports a dialect
+#           only when it is asked for, so a missing driver cannot break the other engine; the tests
+#           import behind `pytest.importorskip`; and two modules defer an import to break a cycle.
+# PLR2004 = magic value in comparison
+# RUF005 = Consider `("__qr", *qr.column_names())` instead of concatenation
+# RUF010 = Use explicit conversion flag
+# SIM112 = use capitalized env vars (Windows-specific)
+# W293, W291 = whitespace
+ignore = [
+    "C901",
+    "E501",
+    "E741",
+    "PLC0415",
+    "PLR2004",
+    "RUF005",
+    "RUF010",
+    "SIM112",
+    "W291",
+    "W293",
+]
+
+# F841 = unused variable but the fix just removes the assignment
+# E731 = fix introduces an un-annotated method which will fail mypy
+unfixable = ["F841", "E731"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25

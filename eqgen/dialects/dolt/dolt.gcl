@@ -1,0 +1,90 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Dolt equivalence configuration. GCL lists replace rather than merge.
+#
+# Portable builders only — no MySql* or Do* weights.
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 0; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 0; },
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 0; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'CteQueryBuilder'; weight = 0; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 0; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 0; },
+        Weighted { v = 'QualifyQueryBuilder'; weight = 5; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 0; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 6; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 6; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 5; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 5; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 5; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 6; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 6; },
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 6; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 5; },
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 5; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 5; },
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 0; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 0; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 0; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 0; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 0; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 0; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 0; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 0; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 0; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 0; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 0; },
+    ];
+};

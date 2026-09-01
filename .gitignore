@@ -1,0 +1,50 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Virtualenv
+.venv/
+
+# Fuzz and coverage run directories: per-round journals, repro .sql files, and .gcda snapshots.
+# Not optional — a single 6-hour run left 223,365 files and 2.6 GB in here.
+eqgen/log/
+
+repro-local/
+
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Stray repo-root run dirs (fuzz --out should use eqgen/log/).
+/log/
+
+# Never keep a Maven cache in-tree; use ~/.m2/repository.
+.m2-repo/
+
+# SQLancer++ integration: local-only tooling, not part of the open-source release.
+eqgen/generators/sqlancerpp/
+eqgen/tests/sqlancerpp_forks_test.py
+
+# Comparison-arm drivers, same reasoning as above: each needs a third-party tree that is not ours to
+# ship. They are not part of the three evaluations, and tcp_cluster.py exists only to serve
+# run_sqlancerpp. The top-level shims go too, so a fresh clone has no import pointing at a missing
+# module.
+evaluation/coverage/run_sqlancerpp.py
+evaluation/coverage/run_dbfuzz.py
+evaluation/run_sqlancerpp.py
+evaluation/run_dbfuzz.py

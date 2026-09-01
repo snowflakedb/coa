@@ -1,0 +1,121 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# MariaDB equivalence configuration. GCL lists replace rather than merge.
+#
+# Portable builders that MySQL already proved, and that MariaDB 11.4 can spell, are on.
+# Still off: TEMP VIEW/TABLE (reopen 1137), MATERIALIZED VIEW (no such statement),
+# LATERAL (1064), MATERIALIZED CTE hints, SEMI JOIN, portable codecs (type/collation),
+# INVISIBLE indexes (different spelling), JsonPack (unswept).
+# MySqlInvisibleIndexBuilder is weight 0 — MariaDB spells ignored indexes as IGNORED.
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        # MariaDB has no CREATE MATERIALIZED VIEW (MySQL 9.7 accepts the syntax as a live view).
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 4; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 5; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'CteQueryBuilder'; weight = 5; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 0; },
+        # MariaDB 11.4 has no LATERAL (dbfuzz: 1064). MySQL-only.
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 0; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 4; },
+        Weighted { v = 'QualifyQueryBuilder'; weight = 5; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 5; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 6; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 6; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 5; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 5; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 5; },
+        # Codec round trips: 0, and not for want of the functions -- MySQL has HEX/UNHEX,
+        # TO_BASE64/FROM_BASE64 and JSON_OBJECT. Two things a spelling cannot fix. The declared type
+        # of an expression-materialized text column never matches the base column's (VARCHAR 253
+        # becomes TEXT 252; CHAR 254 and TEXT 252 have no matching form at all -- checked against a
+        # live server through both SELECT and CREATE VIEW), so the equivalence pre-gate rejects the
+        # object on types while the rows agree. And CAST(x AS CHAR(n)) resets the collation to the
+        # connection default, which flips string comparisons -- see the COLLATE guard in
+        # MySqlJsonPackRoundTripObject, which is why that bespoke builder stays.
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 5; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 5; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 6; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 6; },
+        # WindowRewrite often hits MariaDB 4016 ("Window function is not allowed in …") in
+        # views; keep low so EET/joins still dominate the new surface.
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 2; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 5; },
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 5; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 5; },
+        # SEMI JOIN is DuckDB-native — not MySQL/MariaDB/TiDB/Dolt/Crate.
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 5; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 5; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 5; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 5; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 5; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 5; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 5; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+
+        Weighted { v = 'MySqlPlainIndexBuilder'; weight = 6; },
+        Weighted { v = 'MySqlUniqueIndexBuilder'; weight = 6; },
+        Weighted { v = 'MySqlInvisibleIndexBuilder'; weight = 0; },
+        Weighted { v = 'MySqlPrefixIndexBuilder'; weight = 4; },
+        Weighted { v = 'MySqlInnodbTableBuilder'; weight = 4; },
+        # New this pass, proven only on MySQL so far; pending its own MariaDB sweep.
+        Weighted { v = 'MySqlJsonPackRoundTripBuilder'; weight = 0; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 10; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 4; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 4; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 8; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+        Weighted { v = 'MySqlPlainIndexBuilder'; weight = 6; },
+        Weighted { v = 'MySqlUniqueIndexBuilder'; weight = 6; },
+        Weighted { v = 'MySqlInvisibleIndexBuilder'; weight = 0; },
+        Weighted { v = 'MySqlPrefixIndexBuilder'; weight = 4; },
+        Weighted { v = 'MySqlInnodbTableBuilder'; weight = 4; },
+        Weighted { v = 'MySqlJsonPackRoundTripBuilder'; weight = 0; },
+    ];
+};

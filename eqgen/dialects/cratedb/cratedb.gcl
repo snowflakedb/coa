@@ -1,0 +1,124 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# CrateDB equivalence configuration. GCL lists replace rather than merge.
+#
+# Natives + core portables enabled after scaffold. This pass widened the portable surface: every
+# builder moved off weight 0 below was first validated row- AND type-equivalent across 20+ seeds
+# against a live crate:6.4 server (see the expand/reduce pairs especially — they only fire in
+# reducer+expander pairs, so a plain --sweep reports them not_exercised and they were validated as
+# pairs instead). The builders still at 0 are genuine dialect gaps, each labelled with why.
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 8; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 2; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 2; },
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 4; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'CteQueryBuilder'; weight = 5; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 0; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 0; },
+        # CrateDB has no LATERAL join; keep at 0.
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 0; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 4; },
+        # CrateDB has no QUALIFY keyword, but CrateQueryRenderer lowers it to a subquery; validated ok.
+        Weighted { v = 'QualifyQueryBuilder'; weight = 6; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 3; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 4; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 4; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 3; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 3; },
+        # CrateDB parser rejects `EXCEPT ALL` / `INTERSECT ALL` ("extraneous input 'ALL'"); the bag
+        # identities these builders emit require the ALL variant, so both stay 0.
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 0; },
+        # Codec round trips: the expression-materialized text column's declared type does not match
+        # the base column's on CrateDB, so the equivalence pre-gate rejects on types. Left to a
+        # future bespoke builder as on MySQL.
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 3; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 5; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 3; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 4; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 4; },
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 4; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 4; },
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 4; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 3; },
+        # SEMI is DuckDB-native join syntax; CrateDB has no SEMI JOIN keyword. Stays 0.
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        # Key-channel collapse (validated ok): expanders grow the table with keyed copies, reducers
+        # collapse them via DISTINCT / GROUP BY ANY_VALUE / MAX() OVER / QUALIFY ROW_NUMBER.
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 4; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 3; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 2; },
+        # Tag-channel collapse (validated ok): expanders tag throwaway copies, reducers prune them
+        # with DELETE or a read-time WHERE filter.
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 3; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 2; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 10; },
+
+        Weighted { v = 'CrateDbIndexOffBuilder'; weight = 4; },
+        Weighted { v = 'CrateDbColumnstoreOffBuilder'; weight = 8; },
+        Weighted { v = 'CrateDbNamedFulltextIndexBuilder'; weight = 3; },
+        Weighted { v = 'CrateDbPartitionedBuilder'; weight = 8; },
+        Weighted { v = 'CrateDbObjectRoundTripBuilder'; weight = 4; },
+        # Cross-shard execution: every other object here is single-shard, so these re-cluster the
+        # same rows into 4 shards (plain hash, and explicit CLUSTERED BY routing) to reach CrateDB's
+        # distributed merge/sort/aggregate paths.
+        Weighted { v = 'CrateDbShardCountBuilder'; weight = 4; },
+        Weighted { v = 'CrateDbClusteredByBuilder'; weight = 4; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 10; },
+        Weighted { v = 'CreateTableBuilder'; weight = 8; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 0; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 0; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 0; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 2; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 2; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 3; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 4; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 3; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 3; },
+        Weighted { v = 'CrateDbIndexOffBuilder'; weight = 4; },
+        Weighted { v = 'CrateDbColumnstoreOffBuilder'; weight = 8; },
+        Weighted { v = 'CrateDbNamedFulltextIndexBuilder'; weight = 3; },
+        Weighted { v = 'CrateDbPartitionedBuilder'; weight = 8; },
+        Weighted { v = 'CrateDbObjectRoundTripBuilder'; weight = 4; },
+        Weighted { v = 'CrateDbShardCountBuilder'; weight = 4; },
+        Weighted { v = 'CrateDbClusteredByBuilder'; weight = 4; },
+    ];
+};

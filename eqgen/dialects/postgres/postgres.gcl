@@ -1,0 +1,150 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# PostgreSQL's builder weights — hard coverage push for hunting.
+#
+# GCL lists replace rather than merge, so the whole list is restated.
+# Bias toward: EXCEPT/INTERSECT, windows, LATERAL, CTE materialization hints,
+# key/tag reduce-expand, and all Postgres-native Mats (indexes, DISTINCT ON,
+# security_barrier, extended stats, UNLOGGED).
+
+eqg3: private = include '../../config/gcl/equivalence_generator_v3.gcl';
+Weighted: private = include '../../config/gcl/weighted.gcl';
+BuilderSettings: private = include '../../config/gcl/builder_settings.gcl';
+
+equivalence_generator_v3 = eqg3 {
+    # Was inherited from the portable file at 15. Stated here so the metamorphic-coverage depth
+    # sweep can set it, and because the other dialects already disagree (DuckDB 22, ClickHouse 5).
+    #
+    # Counts builder-stack levels, not stacked rewrites: one rewrite spans create -> query, so the
+    # effective granularity is 2. Measured over 30 seeds, 3 and 4 give identical trees (median AST
+    # depth 4, 3 builders) and so do 5 and 6 -- a sweep has to step by two to move anything. 1 and 2
+    # generate nothing at all: a create dispatches its query child at depth 1, where only leaf
+    # builders are eligible, and the sole leaf (BaseTableSourceBuilder) yields a source, not a query.
+    builder_settings = BuilderSettings { max_depth = 3; max_nodes = 0; max_attempts = 0; };
+
+    builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 8; },
+        Weighted { v = 'CreateTableBuilder'; weight = 8; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 8; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 8; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 10; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 6; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 6; },
+
+        Weighted { v = 'SelectStarQueryBuilder'; weight = 4; },
+        Weighted { v = 'ExplicitProjectionQueryBuilder'; weight = 8; },
+        Weighted { v = 'CteQueryBuilder'; weight = 10; },
+        Weighted { v = 'MaterializedCteQueryBuilder'; weight = 10; },
+        Weighted { v = 'NotMaterializedCteQueryBuilder'; weight = 10; },
+        Weighted { v = 'LateralReprojectQueryBuilder'; weight = 12; },
+        Weighted { v = 'AddDropColumnQueryBuilder'; weight = 6; },
+        Weighted { v = 'QualifyQueryBuilder'; weight = 8; },
+        Weighted { v = 'OrderedScanQueryBuilder'; weight = 10; },
+        Weighted { v = 'PartitionUnionQueryBuilder'; weight = 16; },
+        Weighted { v = 'TlpPartitionUnionQueryBuilder'; weight = 16; },
+        Weighted { v = 'RankModUnionQueryBuilder'; weight = 14; },
+        Weighted { v = 'UnionEmptyRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'ExceptEmptyRoundTripBuilder'; weight = 12; },
+        Weighted { v = 'IntersectSelfRoundTripBuilder'; weight = 12; },
+        # Portable codecs; PostgresSpelling already emits encode/decode and jsonb ->>.
+        Weighted { v = 'HexCodecRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'Base64CodecRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'JsonPackCodecRoundTripBuilder'; weight = 8; },
+        Weighted { v = 'MixedCodecRoundTripBuilder'; weight = 6; },
+        Weighted { v = 'DistinctAsGroupByQueryBuilder'; weight = 8; },
+        Weighted { v = 'DistinctUnionDuplicateQueryBuilder'; weight = 16; },
+        Weighted { v = 'CrossJoinFilterAsInnerBuilder'; weight = 8; },
+        Weighted { v = 'EetCaseColumnQueryBuilder'; weight = 10; },
+        Weighted { v = 'EetDeterminedFilterQueryBuilder'; weight = 10; },
+
+        Weighted { v = 'WindowRewriteQueryBuilder'; weight = 14; },
+        Weighted { v = 'FlagTableJoinQueryBuilder'; weight = 8; },
+        Weighted { v = 'SequenceOuterJoinQueryBuilder'; weight = 8; },
+        Weighted { v = 'LeftJoinEmptyQueryBuilder'; weight = 8; },
+        # SEMI JOIN is DuckDB-native — keep off.
+        Weighted { v = 'SemiJoinFlagRoundTripBuilder'; weight = 0; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 12; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 8; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 8; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 8; },
+        Weighted { v = 'KeyExplodeExpansionBuilder'; weight = 8; },
+        Weighted { v = 'KeyInsertExtrasExpansionBuilder'; weight = 6; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 8; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 8; },
+        Weighted { v = 'TagExplodeExpansionBuilder'; weight = 8; },
+        Weighted { v = 'TagInsertExtrasExpansionBuilder'; weight = 6; },
+        Weighted { v = 'ProjectionQueryBuilder'; weight = 6; },
+        Weighted { v = 'BaseTableSourceBuilder'; weight = 8; },
+
+        Weighted { v = 'PostgresBtreeIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresHashIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresBrinIndexBuilder'; weight = 8; },
+        Weighted { v = 'PostgresPartialIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresExpressionIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresCoveringIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresPartialCoveringIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresPrimaryKeyMatBuilder'; weight = 10; },
+        Weighted { v = 'PostgresMergeUpsertBuilder'; weight = 10; },
+        Weighted { v = 'PostgresGeneratedColumnBuilder'; weight = 10; },
+        Weighted { v = 'PostgresLegacyInheritanceBuilder'; weight = 10; },
+        Weighted { v = 'PostgresDomainColumnBuilder'; weight = 10; },
+        Weighted { v = 'PostgresUnloggedTableBuilder'; weight = 10; },
+        Weighted { v = 'PostgresDistinctOnQueryBuilder'; weight = 12; },
+        Weighted { v = 'PostgresArrayPackRoundTripBuilder'; weight = 14; },
+        Weighted { v = 'PostgresWholeRowJsonPackBuilder'; weight = 12; },
+        Weighted { v = 'PostgresSecurityBarrierViewBuilder'; weight = 10; },
+        Weighted { v = 'PostgresExtendedStatisticsBuilder'; weight = 10; },
+        Weighted { v = 'PostgresGinJsonbIndexBuilder'; weight = 12; },
+        Weighted { v = 'PostgresGistRangeIndexBuilder'; weight = 12; },
+        Weighted { v = 'PostgresPartitionedTableMatBuilder'; weight = 12; },
+        Weighted { v = 'PostgresParallelToggleMatBuilder'; weight = 10; },
+    ];
+
+    root_builder_weights: [Weighted] = [
+        Weighted { v = 'CreateViewBuilder'; weight = 8; },
+        Weighted { v = 'CreateTableBuilder'; weight = 8; },
+        Weighted { v = 'CreateTemporaryViewBuilder'; weight = 8; },
+        Weighted { v = 'CreateTemporaryTableBuilder'; weight = 8; },
+        Weighted { v = 'CreateMaterializedViewBuilder'; weight = 10; },
+        Weighted { v = 'DeleteReinsertTableBuilder'; weight = 6; },
+        Weighted { v = 'NoopUpdateTableBuilder'; weight = 6; },
+        Weighted { v = 'KeyDistinctReduceBuilder'; weight = 12; },
+        Weighted { v = 'KeyGroupAggregateReduceBuilder'; weight = 8; },
+        Weighted { v = 'KeyWindowAggregateReduceBuilder'; weight = 8; },
+        Weighted { v = 'KeyQualifyDedupReduceBuilder'; weight = 8; },
+        Weighted { v = 'TagPruneDeleteReduceBuilder'; weight = 8; },
+        Weighted { v = 'TagPruneFilterReduceBuilder'; weight = 8; },
+        Weighted { v = 'PostgresBtreeIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresHashIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresBrinIndexBuilder'; weight = 8; },
+        Weighted { v = 'PostgresPartialIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresExpressionIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresCoveringIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresPartialCoveringIndexBuilder'; weight = 10; },
+        Weighted { v = 'PostgresPrimaryKeyMatBuilder'; weight = 10; },
+        Weighted { v = 'PostgresMergeUpsertBuilder'; weight = 10; },
+        Weighted { v = 'PostgresGeneratedColumnBuilder'; weight = 10; },
+        Weighted { v = 'PostgresLegacyInheritanceBuilder'; weight = 10; },
+        Weighted { v = 'PostgresDomainColumnBuilder'; weight = 10; },
+        Weighted { v = 'PostgresUnloggedTableBuilder'; weight = 10; },
+        Weighted { v = 'PostgresSecurityBarrierViewBuilder'; weight = 10; },
+        Weighted { v = 'PostgresExtendedStatisticsBuilder'; weight = 10; },
+        Weighted { v = 'PostgresGinJsonbIndexBuilder'; weight = 12; },
+        Weighted { v = 'PostgresGistRangeIndexBuilder'; weight = 12; },
+        Weighted { v = 'PostgresPartitionedTableMatBuilder'; weight = 12; },
+        Weighted { v = 'PostgresParallelToggleMatBuilder'; weight = 10; },
+    ];
+};
